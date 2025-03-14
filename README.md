@@ -15,3 +15,4 @@ This repository provides a simple command-line tool (filecrypt) to encrypt and d
 
 By using Argon2, we have a memory-hard key derivation function resistant to brute-force attacks. By using AES-GCM, we get both confidentiality (encryption) and data integrity (authentication). 
 
+# see /docs 
