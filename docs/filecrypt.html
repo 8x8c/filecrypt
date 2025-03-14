@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>filecrypt README</title>
+  <style>
+    body {
+      margin: 2em auto;
+      max-width: 800px;
+      font-family: sans-serif;
+      line-height: 1.5;
+    }
+    pre {
+      background: #f7f7f7;
+      border: 1px solid #ccc;
+      padding: 0.75em;
+      overflow-x: auto;
+    }
+    code {
+      font-family: Consolas, Monaco, monospace;
+    }
+    h1, h2, h3, h4 {
+      margin-top: 1.2em;
+    }
+    hr {
+      margin: 2em 0;
+    }
+  </style>
+</head>
+<body>
+
+<h1>filecrypt README</h1>
+
+<p>
+  <strong>filecrypt</strong> is a CLI (command-line interface) application written in <strong>Rust</strong> for encrypting and decrypting files using a password-based key derived with <strong>Argon2</strong> and then performing authenticated encryption with <strong>AES-256-GCM</strong>.
+</p>
+
+<hr />
+
+<h2>Table of Contents</h2>
+<ol>
+  <li><a href="#1-introduction">Introduction</a></li>
+  <li><a href="#2-how-to-build-and-run">How to Build and Run</a></li>
+  <li><a href="#3-how-to-use">How to Use</a></li>
+  <li><a href="#4-how-it-works">How the App Works (Detailed)</a></li>
+  <li><a href="#5-design-choices-explained">Design Choices Explained</a></li>
+  <li><a href="#6-conclusion">Conclusion</a></li>
+</ol>
+
+<hr />
+
+<h2 id="1-introduction">1. Introduction</h2>
+
+<p>
+  This repository provides a simple command-line tool (<code>filecrypt</code>) to encrypt and decrypt files using a password. It is designed to demonstrate near-production-grade file encryption using modern, secure primitives:
+</p>
+
+<ul>
+  <li><strong>Argon2 (Argon2id)</strong> for password-based key derivation.</li>
+  <li><strong>AES-256-GCM</strong> for authenticated encryption.</li>
+  <li><strong>Zeroization</strong> of memory buffers holding sensitive data.</li>
+</ul>
+
+<p>
+  By using <strong>Argon2</strong>, we have a memory-hard key derivation function resistant to brute-force attacks. By using <strong>AES-GCM</strong>, we get both confidentiality (encryption) and data integrity (authentication).
+</p>
+
+<hr />
+
+<h2 id="2-how-to-build-and-run">2. How to Build and Run</h2>
+
+<ol>
+  <li>
+    <p><strong>Install Rust</strong> (1.60+ recommended). If you haven’t already, follow instructions at 
+    <a href="https://www.rust-lang.org/tools/install">rust-lang.org</a>.</p>
+  </li>
+  <li>
+    <p><strong>Clone or copy</strong> this repository or the code snippet into a local directory. Ensure <code>Cargo.toml</code> and <code>src/main.rs</code> match the final code provided below.</p>
+  </li>
+  <li>
+    <p><strong>Build in release mode</strong>:</p>
+    <pre><code>cargo build --release</code></pre>
+  </li>
+  <li>
+    <p>The compiled binary will be located at:
+      <pre><code>target/release/filecrypt</code></pre>
+    </p>
+  </li>
+</ol>
+
+<hr />
+
+<h2 id="3-how-to-use">3. How to Use</h2>
+
+<p>
+  Once compiled, <code>filecrypt</code> has two primary commands:
+</p>
+
+<pre><code>./filecrypt encrypt &lt;INPUT_FILE&gt; &lt;OUTPUT_FILE&gt;
+./filecrypt decrypt &lt;INPUT_FILE&gt; &lt;OUTPUT_FILE&gt;</code></pre>
+
+<p>
+  When you run either command, the app will prompt you to <strong>Enter password</strong>. Type in your password (no echo will be displayed), and press <strong>Enter</strong>.
+</p>
+
+<p>
+  For example:
+</p>
+
+<pre><code># Encrypt a file named "secret.txt" to "secret.enc"
+./filecrypt encrypt secret.txt secret.enc
+
+# Decrypt the file "secret.enc" back to "secret.dec.txt"
+./filecrypt decrypt secret.enc secret.dec.txt
+</code></pre>
+
+<hr />
+
+<h2 id="4-how-it-works">4. How the App Works (Detailed)</h2>
+
+<p>
+  A brief overview of what happens during encryption:
+</p>
+
+<ol>
+  <li><strong>Read plaintext</strong> from the input file into memory.</li>
+  <li><strong>Prompt for password</strong> (no echo to terminal).</li>
+  <li><strong>Generate a random salt</strong> (16 bytes) using a secure OS RNG.</li>
+  <li><strong>Derive a 256-bit key</strong> from the password + salt, using Argon2id (memory-hard KDF).</li>
+  <li><strong>Generate a random nonce</strong> (12 bytes) for AES-GCM.</li>
+  <li><strong>Encrypt the plaintext</strong> with AES-256-GCM using the derived key + nonce.</li>
+  <li><strong>Write out</strong> a custom format:
+    <br />
+    <code>[ "file" | salt_len (u16) | salt | nonce_len (u16) | nonce | ciphertext ]</code>
+  </li>
+  <li><strong>Zeroize</strong> (wipe) sensitive data (plaintext buffer, key bytes, password) from memory.</li>
+</ol>
+
+<p>
+  During <strong>decryption</strong>:
+</p>
+
+<ol>
+  <li><strong>Read the encrypted file</strong> and parse the “file” magic, salt, nonce, and ciphertext.</li>
+  <li><strong>Prompt for password</strong>.</li>
+  <li><strong>Re-derive the same 256-bit key</strong> with Argon2, using the original salt from the file.</li>
+  <li><strong>Decrypt using AES-GCM</strong> and verify integrity.</li>
+  <li><strong>Write the recovered plaintext</strong> to the specified output file.</li>
+  <li><strong>Zeroize</strong> the buffers containing sensitive data.</li>
+</ol>
+
+<hr />
+
+<h2 id="5-design-choices-explained">5. Design Choices Explained</h2>
+
+<h3>A. Argon2id for Key Derivation</h3>
+<ul>
+  <li><strong>Memory-hard</strong>, reducing GPU/ASIC advantage in brute-forcing short passwords.</li>
+  <li>We tune <code>m=15000</code> KiB memory, <code>t=2</code> iterations, <code>p=1</code> lanes. 
+      These parameters are <em>examples</em> balancing security and performance. 
+      Tweak to your environment if needed.</li>
+  <li>Using <code>hash_password_into</code> avoids the overhead of generating or parsing a PHC string (no base64 issues).</li>
+</ul>
+
+<h3>B. AES-256-GCM for Encryption</h3>
+<ul>
+  <li><strong>Authenticated Encryption</strong> ensures confidentiality and detects tampering.</li>
+  <li><strong>AES-256</strong> is the widely vetted standard cipher.</li>
+  <li><strong>GCM mode</strong> is recommended for many modern encryption scenarios with short random nonces (12 bytes).</li>
+</ul>
+
+<h3>C. File Format</h3>
+<ul>
+  <li><strong>Magic bytes</strong> (<code>"file"</code>) for quick validation of input.</li>
+  <li><strong>Salt + Nonce + Ciphertext</strong> stored in a straightforward structure 
+      so the app can re-derive the key during decryption without external metadata.</li>
+</ul>
+
+<h3>D. Secure Randomness</h3>
+<ul>
+  <li>All cryptographic randomness (salt, nonce) comes from <code>OsRng</code>, the operating system’s CSPRNG, 
+      ensuring high-entropy values are used.</li>
+</ul>
+
+<h3>E. Zeroization of Sensitive Data</h3>
+<ul>
+  <li>We use the <code>zeroize</code> crate to wipe in-memory buffers containing the plaintext, password, and key.</li>
+  <li>Though no guarantee it can remove all copies in every corner of memory (OS logs, swap, etc.), 
+      this is a standard <em>best practice</em> to reduce exposure windows.</li>
+</ul>
+
+<hr />
+
+<h2 id="6-conclusion">6. Conclusion</h2>
+
+<p>
+  <strong>filecrypt</strong> demonstrates a <em>near-production-grade</em> design:
+</p>
+
+<ul>
+  <li><strong>Argon2 (Argon2id)</strong> as a secure key derivation function, protecting passwords from brute force.</li>
+  <li><strong>AES-256-GCM</strong> for authenticated encryption, protecting both <em>confidentiality</em> and <em>integrity</em>.</li>
+  <li><strong>Simple file format</strong> with self-contained salt/nonce.</li>
+  <li><strong>Zeroization</strong> of sensitive data to minimize accidental leakage.</li>
+  <li><strong>Anyhow &amp; Clap</strong> for robust error handling and a clean CLI experience.</li>
+</ul>
+
+<p>
+  While actual enterprise production use might require additional controls 
+  (e.g., hardware security modules for key management, concurrency/locking, 
+  audit logs, advanced memory protections, etc.), this application and code layout 
+  provide a secure, maintainable foundation for general-purpose file encryption scenarios. 
+</p>
+
+<p><strong>Enjoy encrypting your files with Rust!</strong></p>
+
+</body>
+</html>
+
